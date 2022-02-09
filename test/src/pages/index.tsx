@@ -1,53 +1,82 @@
-import { useEffect, useState, useRef } from "react";
-import Login from "../components/User";
+import type { NextPage } from 'next';
+import styles from '../styles/Home.module.css';
+import { useEffect, useState } from 'react';
+import { client } from '../libs/supabase';
 
-export default function Home() {
-  const { session, user, signOut, signInWithGithub, updateNickname } =
-    Login();
-  const [editingNickname, setEditingNickname] = useState(false);
-  const newNickname = useRef();
+type List = {
+  id: string;
+  fullname: string;
+  avatarurl: string;
+  nickname: string;
+};
 
-  async function setNickname(evt) {
-    evt.preventDefault();
+const Home: NextPage = () => {
+  const [list, setList] = useState<List[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  const fetchData = async () => {
     try {
-      updateNickname(newNickname.current.value);
-      setEditingNickname(false);
-      newNickname.current.value = "";
-    } catch (err) {
-      console.log("エラーが発生しました");
+      setLoading(true);
+      const { data, error } = await (
+        client.from<List>('users')
+          .select('*')
+          .order('id')
+      );
+
+      if (error) {
+        throw error;
+      }
+      if (data) {
+        setList(data);
+      }
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setLoading(false);
     }
-  }
+  };
+
+  useEffect(() => {
+    fetchData();
+
+    const subscription = client
+      .from('users')
+      .on('*', (payload) => {
+        fetchData();
+        console.log('Change received!', payload);
+      })
+      .subscribe();
+
+    return () => {
+      if (subscription) {
+        client.removeSubscription(subscription);
+      }
+    };
+  }, []);
+
+  if (loading) return <div>loading...</div>;
+  if (!list.length) return <div>missing data...</div>;
 
   return (
-    <>
-      {session ? (
-        <div>
-          <p>Hello, {user?.nickname ? user.nickname : user?.fullname}</p>
-          <div>
-            {editingNickname ? (
-              <form onSubmit={setNickname}>
-                <input
-                  type="text"
-                  required
-                  ref={newNickname}
-                  placeholder="新しいニックネーム"
-                />
-                <button type="submit">設定</button>
-              </form>
-            ) : (
-              <div>
-                <button onClick={() => setEditingNickname(true)}>
-                  ニックネームを更新
-                </button>
-              </div>
-            )}
-          </div>
-          <button onClick={() => signOut()}>サインアウト</button>
-        </div>
-      ) : (
-        <button onClick={() => signInWithGithub()}>GitHubでログイン</button>
-      )}
-    </>
+    <div className={styles.container}>
+      <table>
+        <thead>
+          <tr>
+            <td>name</td>
+            <td>codename</td>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((item) => (
+            <tr key={item.id}>
+              <td>{item.fullname}</td>
+              <td>{item.nickname}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
-}
+};
+
+export default Home;
